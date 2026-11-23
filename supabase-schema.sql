@@ -265,14 +265,20 @@ begin
   end if;
 end $revoke$;
 
-create or replace function public.create_server_invite(
+-- Keep privileged invite operations in a non-exposed schema. Public RPC wrappers below
+-- are SECURITY INVOKER and can only call these functions as an authenticated user.
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+grant usage on schema private to authenticated;
+
+create or replace function private.create_server_invite(
   p_server_id uuid,
   p_expires_at timestamptz default null,
   p_max_uses integer default null
 ) returns text
 language plpgsql security definer
 set search_path = ''
-as $$
+as $invite$
 declare v_code text;
 begin
   if auth.uid() is null then raise exception 'Sign in first.'; end if;
@@ -285,13 +291,13 @@ begin
   values(p_server_id,v_code,auth.uid(),p_expires_at,p_max_uses);
   return v_code;
 end;
-$$;
+$invite$;
 
-create or replace function public.join_server_by_invite(p_code text)
+create or replace function private.join_server_by_invite(p_code text)
 returns uuid
 language plpgsql security definer
 set search_path = ''
-as $$
+as $join$
 declare v_invite public.server_invites%rowtype; v_inserted integer;
 begin
   if auth.uid() is null then raise exception 'Sign in first.'; end if;
@@ -309,9 +315,33 @@ begin
   end if;
   return v_invite.server_id;
 end;
-$$;
+$join$;
 
-revoke all on function public.create_server_invite(uuid,timestamptz,integer) from public, anon;
-revoke all on function public.join_server_by_invite(text) from public, anon;
+revoke all on function private.create_server_invite(uuid,timestamptz,integer) from public, anon, authenticated;
+revoke all on function private.join_server_by_invite(text) from public, anon, authenticated;
+grant execute on function private.create_server_invite(uuid,timestamptz,integer) to authenticated;
+grant execute on function private.join_server_by_invite(text) to authenticated;
+
+create or replace function public.create_server_invite(
+  p_server_id uuid,
+  p_expires_at timestamptz default null,
+  p_max_uses integer default null
+) returns text
+language sql security invoker
+set search_path = ''
+as $wrapper$
+  select private.create_server_invite($1,$2,$3);
+$wrapper$;
+
+create or replace function public.join_server_by_invite(p_code text)
+returns uuid
+language sql security invoker
+set search_path = ''
+as $wrapper$
+  select private.join_server_by_invite($1);
+$wrapper$;
+
+revoke all on function public.create_server_invite(uuid,timestamptz,integer) from public, anon, authenticated;
+revoke all on function public.join_server_by_invite(text) from public, anon, authenticated;
 grant execute on function public.create_server_invite(uuid,timestamptz,integer) to authenticated;
 grant execute on function public.join_server_by_invite(text) to authenticated;
