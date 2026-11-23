@@ -17,7 +17,7 @@ A browser-based Discord-style chat app built with HTML, CSS, JavaScript, Supabas
 
 1. Restore the Supabase project configured in `supabase-config.js` if it is paused.
 2. Open the Supabase SQL Editor.
-3. Run the complete `supabase-schema.sql` file. It creates the app tables, RLS policies, profile trigger, message Realtime publication, and secure invite-code functions.
+3. Run the complete `supabase-schema.sql` file. It creates the app tables, RLS policies, profile trigger, message Realtime publication, and secure invite-code functions. The older `SECURITY-HARDENING.sql` and `INVITES.sql` files are deprecated; do not run them.
 4. In Authentication → Providers, enable Email. Enable Discord only if you want the OAuth button to work, and configure its provider credentials and redirect URLs.
 5. In Authentication → URL Configuration, add your GitHub Pages URL to the allowed redirect URLs.
 6. Check Database → Replication and ensure `public.messages` is enabled for Realtime if your project does not apply the publication change automatically.
