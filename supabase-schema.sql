@@ -201,7 +201,7 @@ create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = ''
-as $$
+as $handler$
 begin
   insert into public.profiles (id, username)
   values (
@@ -211,7 +211,7 @@ begin
   on conflict (id) do nothing;
   return new;
 end;
-$;
+$handler$;
 revoke all on function public.handle_new_user() from public, anon, authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
@@ -226,7 +226,8 @@ begin
 exception
   when duplicate_object then null;
 end $$;
-\n
+
+
 -- Secure invite codes for Discord Web. Run in Supabase SQL Editor.
 create table if not exists public.server_invites (
   id uuid primary key default gen_random_uuid(),
