@@ -93,12 +93,22 @@ create policy "users can read own memberships" on public.server_members
 for select to authenticated using (user_id = auth.uid());
 
 drop policy if exists "users can join servers" on public.server_members;
-create policy "users can join servers" on public.server_members
-for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists "server owners can add their own owner membership" on public.server_members;
+create policy "server owners can add their own owner membership" on public.server_members
+for insert to authenticated with check (
+  user_id = (select auth.uid())
+  and role = 'owner'
+  and exists (
+    select 1 from public.servers s
+    where s.id = server_id and s.owner_id = (select auth.uid())
+  )
+);
 
 drop policy if exists "users can leave own membership" on public.server_members;
-create policy "users can leave own membership" on public.server_members
-for delete to authenticated using (user_id = auth.uid());
+create policy "members can leave their own membership" on public.server_members
+for delete to authenticated using (
+  user_id = (select auth.uid()) and role <> 'owner'
+);
 
 -- Channels
 drop policy if exists "members can read channels" on public.channels;
@@ -111,34 +121,41 @@ for select to authenticated using (
 );
 
 drop policy if exists "members can create channels" on public.channels;
-create policy "members can create channels" on public.channels
+drop policy if exists "server owners can create channels" on public.channels;
+create policy "server owners can create channels" on public.channels
 for insert to authenticated with check (
   exists (
-    select 1 from public.server_members m
-    where m.server_id = public.channels.server_id and m.user_id = auth.uid()
+    select 1 from public.servers s
+    where s.id = public.channels.server_id
+      and s.owner_id = (select auth.uid())
   )
 );
 
 drop policy if exists "members can update channels" on public.channels;
-create policy "members can update channels" on public.channels
+drop policy if exists "server owners can update channels" on public.channels;
+create policy "server owners can update channels" on public.channels
 for update to authenticated using (
   exists (
-    select 1 from public.server_members m
-    where m.server_id = public.channels.server_id and m.user_id = auth.uid()
+    select 1 from public.servers s
+    where s.id = public.channels.server_id
+      and s.owner_id = (select auth.uid())
   )
 ) with check (
   exists (
-    select 1 from public.server_members m
-    where m.server_id = public.channels.server_id and m.user_id = auth.uid()
+    select 1 from public.servers s
+    where s.id = public.channels.server_id
+      and s.owner_id = (select auth.uid())
   )
 );
 
 drop policy if exists "members can delete channels" on public.channels;
-create policy "members can delete channels" on public.channels
+drop policy if exists "server owners can delete channels" on public.channels;
+create policy "server owners can delete channels" on public.channels
 for delete to authenticated using (
   exists (
-    select 1 from public.server_members m
-    where m.server_id = public.channels.server_id and m.user_id = auth.uid()
+    select 1 from public.servers s
+    where s.id = public.channels.server_id
+      and s.owner_id = (select auth.uid())
   )
 );
 
@@ -167,8 +184,17 @@ for insert to authenticated with check (
 );
 
 drop policy if exists "users can delete own messages" on public.messages;
-create policy "users can delete own messages" on public.messages
-for delete to authenticated using (user_id = auth.uid());
+create policy "members can delete own messages" on public.messages
+for delete to authenticated using (
+  user_id = (select auth.uid())
+  and exists (
+    select 1
+    from public.channels c
+    join public.server_members m on m.server_id = c.server_id
+    where c.id = public.messages.channel_id
+      and m.user_id = (select auth.uid())
+  )
+);
 
 -- Automatically create a profile after signup.
 create or replace function public.handle_new_user()
