@@ -58,6 +58,8 @@ function openJoinServer(){
    if(r.error)throw r.error;
    $("modal").classList.remove("open");
    await loadServers();
+   const joined=servers.find(server=>server.id===r.data);
+   if(joined){currentServer=joined;currentChannel=null;await loadChannels();renderServers();}
    history.replaceState(null,"",location.pathname);
    alert("Joined server successfully.");
   }catch(e){alert("Could not join server: "+e.message);}
