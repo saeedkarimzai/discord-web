@@ -115,6 +115,7 @@ for insert to authenticated with check (
 );
 
 drop policy if exists "users can leave own membership" on public.server_members;
+drop policy if exists "members can leave their own membership" on public.server_members;
 create policy "members can leave their own membership" on public.server_members
 for delete to authenticated using (
   user_id = (select auth.uid()) and role <> 'owner'
