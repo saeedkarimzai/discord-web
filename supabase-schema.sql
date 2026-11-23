@@ -253,6 +253,7 @@ create index if not exists server_invites_server_id_idx on public.server_invites
 create index if not exists server_invites_created_by_idx on public.server_invites(created_by);
 create index if not exists messages_user_id_idx on public.messages(user_id);
 create index if not exists servers_owner_id_idx on public.servers(owner_id);
+drop index if exists public.server_invites_code_idx;
 alter table public.server_invites enable row level security;
 
 do $revoke$
