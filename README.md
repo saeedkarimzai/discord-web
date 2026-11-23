@@ -14,7 +14,7 @@ A real browser-based Discord-style chat application.
 
 The site is static and can be deployed with GitHub Pages.
 
-Before voice works, edit `mqtt-config.js` with a WebSocket MQTT broker. Do not put a permanent production secret in a public repository. For production, use short-lived/authenticated broker credentials.
+Voice signaling uses Supabase Realtime Broadcast, so no separate MQTT broker is required. Microphone access requires HTTPS and browser permission. WebRTC uses public STUN servers; restrictive networks may still require a TURN server, so voice is not guaranteed on every network.
 
 ## Important
 
