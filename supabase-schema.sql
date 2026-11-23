@@ -50,6 +50,15 @@ alter table public.server_members enable row level security;
 alter table public.channels enable row level security;
 alter table public.messages enable row level security;
 
+-- Explicit Data API privileges; RLS policies above remain the row-level security boundary.
+grant usage on schema public to authenticated;
+grant select,insert,update on public.profiles to authenticated;
+grant select,insert,update,delete on public.servers to authenticated;
+grant select,insert,delete on public.server_members to authenticated;
+grant select,insert,update,delete on public.channels to authenticated;
+grant select,insert,delete on public.messages to authenticated;
+
+
 -- Profiles
  drop policy if exists "profiles readable by signed in users" on public.profiles;
 create policy "profiles readable by signed in users" on public.profiles
