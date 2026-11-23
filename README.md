@@ -1,31 +1,47 @@
 # Discord Web
 
-A real browser-based Discord-style chat application.
+A browser-based Discord-style chat app built with HTML, CSS, JavaScript, Supabase, and WebRTC. It is a static site and does not require Node.js.
 
-## Current architecture
+## Features
 
-- GitHub Pages hosts the web application.
-- Supabase handles accounts, profiles, servers, channels, messages, and realtime chat.
-- MQTT handles voice-room signaling and can later handle presence and realtime events.
-- WebRTC handles direct browser voice connections.
-- TURN is recommended for reliable voice connections across restrictive networks.
+- Email/password accounts
+- Optional Discord OAuth login (requires enabling the Discord provider in Supabase Auth)
+- User profiles
+- Servers and text channels
+- Secure shareable invite codes
+- Real-time messages
+- Online presence
+- One-to-one and small-room WebRTC voice
 
-## Run it
+## Supabase setup
 
-The site is static and can be deployed with GitHub Pages.
+1. Restore the Supabase project configured in `supabase-config.js` if it is paused.
+2. Open the Supabase SQL Editor.
+3. Run the complete `supabase-schema.sql` file. It creates the app tables, RLS policies, profile trigger, message Realtime publication, and secure invite-code functions.
+4. In Authentication → Providers, enable Email. Enable Discord only if you want the OAuth button to work, and configure its provider credentials and redirect URLs.
+5. In Authentication → URL Configuration, add your GitHub Pages URL to the allowed redirect URLs.
+6. Check Database → Replication and ensure `public.messages` is enabled for Realtime if your project does not apply the publication change automatically.
 
-Voice signaling uses Supabase Realtime Broadcast, so no separate MQTT broker is required. Microphone access requires HTTPS and browser permission. WebRTC uses public STUN servers; restrictive networks may still require a TURN server, so voice is not guaranteed on every network.
+The publishable key in `supabase-config.js` is designed to be public. Never put a service-role key or secret in browser code.
 
-## Important
+## Deploy
 
-WebRTC mesh is intended for small voice rooms. A large Discord-scale voice system should use an SFU rather than a peer-to-peer connection between every user.
+In GitHub, open Settings → Pages, choose **Deploy from a branch**, select `main` and `/(root)`, then save. Open the published HTTPS URL to use microphone features.
 
-Supabase Row Level Security should be enabled and configured so users can only read/write data they are allowed to access.
+## Create and join servers
 
+Use the **+** button to create a server. Use the link button beside the server name to create an invite code, then send the generated link or code to a friend. The **↪** button lets a signed-in user join with a code. Invite creation is restricted to the server owner; invite codes can be used once per user and may be extended with expiry/use limits through the SQL function.
 
-## Security hardening
+## Voice notes
 
-- Supabase Row Level Security is the actual authorization layer for the live app.
-- Run `SECURITY-HARDENING.sql` in the Supabase SQL Editor on an existing database to restrict server membership creation and channel management to server owners.
-- The current UI does not implement invitations or joining servers, so arbitrary UUID-based self-joining is intentionally blocked until a proper invite flow is built.
-- `database.rules.json` is a legacy Firebase Realtime Database file and is deny-all; the current app uses Supabase.
+Voice signaling uses Supabase Realtime Broadcast. No MQTT broker is required. Microphone access requires HTTPS and browser permission. WebRTC uses public STUN servers; restrictive school, corporate, or mobile networks may still require a TURN relay, so voice is not guaranteed on every network. The mesh design is intended for small rooms, not large public servers.
+
+## Troubleshooting
+
+- **Login or messages fail:** confirm the Supabase project is active and the URL/key match the project.
+- **Missing table/function errors:** rerun `supabase-schema.sql` in SQL Editor.
+- **Realtime messages do not appear:** enable `public.messages` in the Realtime publication.
+- **Discord OAuth fails:** enable the Discord provider and configure the callback URL in Supabase and the Discord developer portal.
+- **Voice fails:** check HTTPS, microphone permission, Supabase Realtime, and whether the current network allows WebRTC.
+
+The app is a learning project, not a production Discord replacement. GitHub Pages is public; do not commit passwords, service-role keys, private TURN credentials, or other secrets.
