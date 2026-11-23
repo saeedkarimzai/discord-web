@@ -52,13 +52,17 @@ if (typeof document !== "undefined") {
       send.style.opacity = '0.5';
 
       const serverMenu = document.getElementById('serverMenu');
+      const joinServer = document.getElementById('joinServer');
+      const voiceButton = document.getElementById('voiceButton');
       const settings = document.getElementById('settings');
       if (serverMenu) serverMenu.style.display = 'none';
+      if (joinServer) joinServer.style.display = 'none';
+      if (voiceButton) voiceButton.style.display = 'none';
       if (settings) settings.style.display = 'none';
 
       document.addEventListener('click', event => {
         if (!app.dataset.guest) return;
-        if (event.target.closest('#send,#messageInput,#serverMenu,#settings,#addChannel,.channel .x,.server.add')) {
+        if (event.target.closest('#send,#messageInput,#serverMenu,#joinServer,#voiceButton,#settings,#addChannel,.channel .x,.server.add')) {
           event.preventDefault();
           event.stopPropagation();
         }
