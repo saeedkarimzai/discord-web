@@ -34,7 +34,7 @@ function openChannel(){openModal('Create a channel','<div class="field"><label>C
 
 async function openInvite(){
  if(!currentServer)return alert("Create or select a server first.");
- openModal("Create server invite","<p class=\"notice\">Create a shareable invite code for "+currentServer.name+". Anyone with the code can join.</p>",async()=>{
+ openModal("Create server invite","<p class=\"notice\">Create a shareable invite code. Anyone with the code can join this server.</p>",async()=>{
   try{
    const r=await supabase.rpc("create_server_invite",{p_server_id:currentServer.id,p_expires_at:null,p_max_uses:null});
    if(r.error)throw r.error;
