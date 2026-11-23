@@ -200,7 +200,7 @@ for delete to authenticated using (
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
-security definer set search_path = public
+security definer set search_path = ''
 as $$
 begin
   insert into public.profiles (id, username)
@@ -211,7 +211,8 @@ begin
   on conflict (id) do nothing;
   return new;
 end;
-$$;
+$;
+revoke all on function public.handle_new_user() from public, anon, authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -246,7 +247,7 @@ create or replace function public.create_server_invite(
   p_max_uses integer default null
 ) returns text
 language plpgsql security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare v_code text;
 begin
@@ -255,7 +256,7 @@ begin
   if not exists(select 1 from public.servers s where s.id=p_server_id and s.owner_id=auth.uid()) then
     raise exception 'Only the server owner can create invites.';
   end if;
-  v_code := lower(encode(gen_random_bytes(8),'hex'));
+  v_code := lower(replace(gen_random_uuid()::text,'-',''));
   insert into public.server_invites(server_id,code,created_by,expires_at,max_uses)
   values(p_server_id,v_code,auth.uid(),p_expires_at,p_max_uses);
   return v_code;
@@ -265,7 +266,7 @@ $$;
 create or replace function public.join_server_by_invite(p_code text)
 returns uuid
 language plpgsql security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare v_invite public.server_invites%rowtype; v_inserted integer;
 begin
