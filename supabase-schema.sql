@@ -76,30 +76,31 @@ for update to authenticated using (id = auth.uid()) with check (id = auth.uid())
  drop policy if exists "members can read servers" on public.servers;
 create policy "members can read servers" on public.servers
 for select to authenticated using (
-  owner_id = auth.uid()
+  owner_id = (select auth.uid())
   or exists (
     select 1 from public.server_members m
-    where m.server_id = public.servers.id and m.user_id = auth.uid()
+    where m.server_id = public.servers.id and m.user_id = (select auth.uid())
   )
 );
 
 drop policy if exists "users create servers" on public.servers;
 create policy "users create servers" on public.servers
-for insert to authenticated with check (owner_id = auth.uid());
+for insert to authenticated with check (owner_id = (select auth.uid()));
 
 drop policy if exists "owners update servers" on public.servers;
 create policy "owners update servers" on public.servers
-for update to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+for update to authenticated using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
 
 drop policy if exists "owners delete servers" on public.servers;
 create policy "owners delete servers" on public.servers
-for delete to authenticated using (owner_id = auth.uid());
+for delete to authenticated using (owner_id = (select auth.uid()));
 
 -- Membership
 -- Keep membership reads simple to avoid recursive RLS checks.
+drop policy if exists "members can read memberships" on public.server_members;
 drop policy if exists "users can read own memberships" on public.server_members;
 create policy "users can read own memberships" on public.server_members
-for select to authenticated using (user_id = auth.uid());
+for select to authenticated using (user_id = (select auth.uid()));
 
 drop policy if exists "users can join servers" on public.server_members;
 drop policy if exists "server owners can add their own owner membership" on public.server_members;
@@ -125,7 +126,7 @@ create policy "members can read channels" on public.channels
 for select to authenticated using (
   exists (
     select 1 from public.server_members m
-    where m.server_id = public.channels.server_id and m.user_id = auth.uid()
+    where m.server_id = public.channels.server_id and m.user_id = (select auth.uid())
   )
 );
 
@@ -176,19 +177,19 @@ for select to authenticated using (
     select 1
     from public.channels c
     join public.server_members m on m.server_id = c.server_id
-    where c.id = public.messages.channel_id and m.user_id = auth.uid()
+    where c.id = public.messages.channel_id and m.user_id = (select auth.uid())
   )
 );
 
 drop policy if exists "members can send messages" on public.messages;
 create policy "members can send messages" on public.messages
 for insert to authenticated with check (
-  user_id = auth.uid()
+  user_id = (select auth.uid())
   and exists (
     select 1
     from public.channels c
     join public.server_members m on m.server_id = c.server_id
-    where c.id = public.messages.channel_id and m.user_id = auth.uid()
+    where c.id = public.messages.channel_id and m.user_id = (select auth.uid())
   )
 );
 
@@ -248,8 +249,18 @@ create table if not exists public.server_invites (
   uses integer not null default 0 check (uses >= 0),
   created_at timestamptz not null default now()
 );
-create index if not exists server_invites_code_idx on public.server_invites(code);
+create index if not exists server_invites_server_id_idx on public.server_invites(server_id);
+create index if not exists server_invites_created_by_idx on public.server_invites(created_by);
+create index if not exists messages_user_id_idx on public.messages(user_id);
+create index if not exists servers_owner_id_idx on public.servers(owner_id);
 alter table public.server_invites enable row level security;
+
+do $revoke$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke all on function public.rls_auto_enable() from public, anon, authenticated';
+  end if;
+end $revoke$;
 
 create or replace function public.create_server_invite(
   p_server_id uuid,
