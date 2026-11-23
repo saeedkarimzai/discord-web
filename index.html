@@ -44,7 +44,7 @@ async function openInvite(){
    if(!code)throw new Error("The database did not return an invite code.");
    const link=location.origin+location.pathname+"?invite="+encodeURIComponent(code);
    await navigator.clipboard?.writeText(link).catch(()=>{});
-   alert("Invite code: "+code+"\\nInvite link: "+link+"\\n(The link was copied when clipboard access was available.)");
+   alert("Invite code: "+code+"\nInvite link: "+link+"\n(The link was copied when clipboard access was available.)");
    $("modal").classList.remove("open");
   }catch(e){alert("Could not create invite: "+e.message);}
  });
@@ -62,7 +62,8 @@ function openJoinServer(){
   }catch(e){alert("Could not join server: "+e.message);}
  });
 }
-\nasync function deleteChannel(c){if(channels.length===1)return;if(!confirm('Delete #'+c.name+'?'))return;let x=await supabase.from('channels').delete().eq('id',c.id);if(x.error)return alert(x.error.message);channels=channels.filter(x=>x.id!==c.id);currentChannel=channels[0];renderChannels();await loadMessages();subscribeRealtime()}
+
+async function deleteChannel(c){if(channels.length===1)return;if(!confirm('Delete #'+c.name+'?'))return;let x=await supabase.from('channels').delete().eq('id',c.id);if(x.error)return alert(x.error.message);channels=channels.filter(x=>x.id!==c.id);currentChannel=channels[0];renderChannels();await loadMessages();subscribeRealtime()}
 $('logout').onclick=signOut;$('serverMenu').onclick=openInvite;$('joinServer').onclick=openJoinServer;$('settings').onclick=()=>openModal('Account Settings','<div class="field"><label>DISPLAY NAME</label><input id="modalInput" maxlength="24" value="'+(profile?.username||'').replace(/"/g,'&quot;')+'"></div><p class="notice">Your account is stored in Supabase and works across devices.</p>',async()=>{let n=$('modalInput').value.trim();if(!n)return;let x=await supabase.from('profiles').update({username:n}).eq('id',user.id);if(x.error)return alert(x.error.message);profile.username=n;$('myName').textContent=n;$('myAvatar').textContent=init(n);$('modal').classList.remove('open');await loadMessages()});$('modal').onclick=e=>{if(e.target===$('modal'))$('modal').classList.remove('open')};
 supabase.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){location.reload()}else if(session&&!user)boot(session.user).catch(e=>showError(e.message))});supabase.auth.getSession().then(({data})=>{if(data.session)boot(data.session.user).catch(e=>showError(e.message));else setAuthMode(false)});
 </script></body></html>
