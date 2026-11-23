@@ -1,199 +1,78 @@
-import mqtt from "https://cdn.jsdelivr.net/npm/mqtt@5.10.4/+esm";
-import { MQTT_CONFIG, RTC_CONFIG } from "./mqtt-config.js";
-
+// Supabase Realtime + WebRTC voice rooms. No separate MQTT broker is required.
 export class VoiceRoom {
-  constructor({ roomId, userId, username, onStatus, onPeer, onRemoteStream }) {
-    this.roomId = roomId;
-    this.userId = userId;
-    this.username = username;
-    this.onStatus = onStatus || (() => {});
-    this.onPeer = onPeer || (() => {});
-    this.onRemoteStream = onRemoteStream || (() => {});
-    this.peers = new Map();
-    this.client = null;
-    this.localStream = null;
-    this.topic = `discord/rooms/${roomId}/signal`;
-    this.connected = false;
+  constructor({supabase,roomId,userId,username,onStatus,onPeer,onRemoteStream}) {
+    if(!supabase) throw new Error("Supabase client is required for voice signaling.");
+    Object.assign(this,{supabase,roomId,userId,username:username||"User"});
+    this.onStatus=onStatus||(()=>{});this.onPeer=onPeer||(()=>{});this.onRemoteStream=onRemoteStream||(()=>{});
+    this.peers=new Map();this.channel=null;this.localStream=null;this.joined=false;
   }
-
-  async connect() {
-    if (!MQTT_CONFIG.url || MQTT_CONFIG.url.includes("YOUR-MQTT-BROKER")) {
-      throw new Error("Set MQTT_CONFIG.url, username, and password in mqtt-config.js first.");
-    }
-
-    this.onStatus("Connecting to voice signaling...");
-    const suffix = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-    this.client = mqtt.connect(MQTT_CONFIG.url, {
-      username: MQTT_CONFIG.username,
-      password: MQTT_CONFIG.password,
-      clientId: `${MQTT_CONFIG.clientPrefix}-${this.userId}-${suffix}`,
-      clean: true,
-      reconnectPeriod: 3000,
-      connectTimeout: 10000
-    });
-
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("MQTT connection timed out.")), 12000);
-      this.client.once("connect", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      this.client.once("error", err => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
-
-    this.client.subscribe(this.topic, { qos: 1 }, err => {
-      if (err) this.onStatus("MQTT subscribe failed: " + err.message);
-    });
-
-    this.client.on("message", (_topic, raw) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        if (msg.from === this.userId) return;
-        this.handleSignal(msg).catch(err => this.onStatus("WebRTC error: " + err.message));
-      } catch {}
-    });
-
-    this.client.on("close", () => {
-      this.connected = false;
-      this.onStatus("Voice signaling disconnected.");
-    });
-
-    this.connected = true;
-    this.onStatus("Voice signaling connected.");
-    this.publish({ type: "join", from: this.userId, username: this.username });
-  }
-
-  async startMicrophone() {
-    if (!this.localStream) {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: false
-      });
-    }
-    return this.localStream;
-  }
-
   async join() {
-    await this.startMicrophone();
-    if (!this.connected) await this.connect();
-    this.publish({ type: "join", from: this.userId, username: this.username });
-  }
-
-  async leave() {
-    for (const [id, peer] of this.peers) {
-      peer.pc.close();
-      this.onPeer(id, null);
-    }
-    this.peers.clear();
-    this.publish({ type: "leave", from: this.userId, username: this.username });
-    this.localStream?.getTracks().forEach(t => t.stop());
-    this.localStream = null;
-    this.client?.end(true);
-    this.client = null;
-    this.connected = false;
-  }
-
-  publish(message) {
-    if (!this.client || !this.connected) return;
-    this.client.publish(this.topic, JSON.stringify(message), { qos: 1 });
-  }
-
-  async makePeer(peerId, peerName, initiator) {
-    if (this.peers.has(peerId)) return this.peers.get(peerId);
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    const peer = { pc, username: peerName || "User" };
-    this.peers.set(peerId, peer);
-
-    if (this.localStream) {
-      for (const track of this.localStream.getTracks()) pc.addTrack(track, this.localStream);
-    }
-
-    pc.onicecandidate = e => {
-      if (e.candidate) this.publish({
-        type: "candidate",
-        from: this.userId,
-        to: peerId,
-        candidate: e.candidate
+    if(!window.isSecureContext&&location.hostname!=="localhost")throw new Error("Voice calls require HTTPS.");
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error("This browser does not support microphone access.");
+    this.onStatus("Requesting microphone permission…");
+    this.localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+    this.channel=this.supabase.channel("discord-voice-"+this.roomId,{config:{broadcast:{self:false}}});
+    this.channel.on("broadcast",{event:"signal"},({payload})=>this.handleSignal(payload).catch(e=>this.onStatus("Voice error: "+e.message)));
+    await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error("Voice signaling timed out. Check Supabase Realtime.")),12000);
+      this.channel.subscribe(status=>{
+        if(status==="SUBSCRIBED"){clearTimeout(timer);resolve();}
+        else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){clearTimeout(timer);reject(new Error("Could not join the Supabase voice room."));}
       });
+    });
+    this.joined=true;
+    await this.send({type:"join",from:this.userId,username:this.username});
+    this.onStatus("Voice room connected. Waiting for others…");
+  }
+  async send(payload) {
+    if(!this.channel||!this.joined)return;
+    const status=await this.channel.send({type:"broadcast",event:"signal",payload});
+    if(status!=="ok")this.onStatus("Voice signaling warning: "+status);
+  }
+  async makePeer(id,name,initiator) {
+    if(this.peers.has(id))return this.peers.get(id);
+    const pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"}]});
+    const peer={pc,username:name||"User",pendingCandidates:[]};this.peers.set(id,peer);
+    this.localStream.getTracks().forEach(track=>pc.addTrack(track,this.localStream));
+    pc.onicecandidate=e=>{if(e.candidate)this.send({type:"candidate",from:this.userId,to:id,candidate:e.candidate}).catch(err=>this.onStatus(err.message));};
+    pc.ontrack=e=>{const stream=e.streams?.[0];if(stream)this.onRemoteStream(id,peer.username,stream);};
+    pc.onconnectionstatechange=()=>{
+      const state=pc.connectionState;
+      if(state==="connected")this.onStatus("Voice connected.");
+      if(state==="failed"||state==="closed"){this.onPeer(id,null);this.peers.delete(id);}
+      else if(state==="disconnected")this.onStatus("A voice connection was interrupted.");
     };
-
-    pc.ontrack = e => {
-      const stream = e.streams[0];
-      if (stream) this.onRemoteStream(peerId, peer.username, stream);
-    };
-
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      if (state === "failed" || state === "closed" || state === "disconnected") {
-        this.onPeer(peerId, null);
-        if (state === "closed" || state === "failed") this.peers.delete(peerId);
-      }
-    };
-
-    this.onPeer(peerId, peer);
-
-    if (initiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      this.publish({
-        type: "offer",
-        from: this.userId,
-        to: peerId,
-        username: this.username,
-        sdp: pc.localDescription
-      });
-    }
+    this.onPeer(id,peer);
+    if(initiator){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await this.send({type:"offer",from:this.userId,to:id,username:this.username,sdp:pc.localDescription});}
     return peer;
   }
-
+  async flushCandidates(peer) {
+    if(!peer.pc.remoteDescription)return;
+    for(const candidate of peer.pendingCandidates.splice(0)){try{await peer.pc.addIceCandidate(candidate);}catch(e){console.warn("ICE candidate rejected",e);}}
+  }
   async handleSignal(msg) {
-    if (msg.to && msg.to !== this.userId) return;
-
-    if (msg.type === "join") {
-      // Deterministic initiator rule prevents both peers from creating offers.
-      if (this.userId < msg.from) {
-        await this.makePeer(msg.from, msg.username, true);
-      }
-      return;
+    if(!msg||msg.from===this.userId||(msg.to&&msg.to!==this.userId))return;
+    if(msg.type==="join"){await this.makePeer(msg.from,msg.username,true);return;}
+    if(msg.type==="leave"){const p=this.peers.get(msg.from);p?.pc.close();this.peers.delete(msg.from);this.onPeer(msg.from,null);return;}
+    if(msg.type==="offer"){
+      const peer=await this.makePeer(msg.from,msg.username,false);
+      await peer.pc.setRemoteDescription(msg.sdp);await this.flushCandidates(peer);
+      const answer=await peer.pc.createAnswer();await peer.pc.setLocalDescription(answer);
+      await this.send({type:"answer",from:this.userId,to:msg.from,username:this.username,sdp:peer.pc.localDescription});return;
     }
-
-    if (msg.type === "leave") {
-      const peer = this.peers.get(msg.from);
-      peer?.pc.close();
-      this.peers.delete(msg.from);
-      this.onPeer(msg.from, null);
-      return;
+    const peer=this.peers.get(msg.from);if(!peer)return;
+    if(msg.type==="answer"){await peer.pc.setRemoteDescription(msg.sdp);await this.flushCandidates(peer);}
+    else if(msg.type==="candidate"&&msg.candidate){
+      if(peer.pc.remoteDescription){try{await peer.pc.addIceCandidate(msg.candidate);}catch(e){console.warn("ICE candidate rejected",e);}}
+      else peer.pendingCandidates.push(msg.candidate);
     }
-
-    if (msg.type === "offer") {
-      const peer = await this.makePeer(msg.from, msg.username, false);
-      await peer.pc.setRemoteDescription(msg.sdp);
-      const answer = await peer.pc.createAnswer();
-      await peer.pc.setLocalDescription(answer);
-      this.publish({
-        type: "answer",
-        from: this.userId,
-        to: msg.from,
-        username: this.username,
-        sdp: peer.pc.localDescription
-      });
-      return;
-    }
-
-    if (msg.type === "answer") {
-      const peer = this.peers.get(msg.from);
-      if (peer) await peer.pc.setRemoteDescription(msg.sdp);
-      return;
-    }
-
-    if (msg.type === "candidate") {
-      const peer = this.peers.get(msg.from);
-      if (peer && msg.candidate) {
-        try { await peer.pc.addIceCandidate(msg.candidate); } catch {}
-      }
-    }
+  }
+  async leave() {
+    if(this.joined){try{await this.send({type:"leave",from:this.userId,username:this.username});}catch{}}
+    this.joined=false;
+    for(const [id,p] of this.peers){p.pc.close();this.onPeer(id,null);}this.peers.clear();
+    this.localStream?.getTracks().forEach(t=>t.stop());this.localStream=null;
+    if(this.channel){await this.supabase.removeChannel(this.channel);this.channel=null;}
+    this.onStatus("Not in a voice room.");
   }
 }
