@@ -45,3 +45,6 @@ Voice signaling uses Supabase Realtime Broadcast. No MQTT broker is required. Mi
 - **Voice fails:** check HTTPS, microphone permission, Supabase Realtime, and whether the current network allows WebRTC.
 
 The app is a learning project, not a production Discord replacement. GitHub Pages is public; do not commit passwords, service-role keys, private TURN credentials, or other secrets.
+
+
+**Important:** committing this SQL file does not change the live Supabase database. Back up an existing project, then review and run the current `supabase-schema.sql` in Supabase SQL Editor. Do not run the deprecated partial SQL files.
