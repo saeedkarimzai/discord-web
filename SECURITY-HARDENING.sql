@@ -61,7 +61,8 @@ for delete to authenticated using (
 );
 
 drop policy if exists "users can delete own messages" on public.messages;
-drop policy if exists "members can delete own messages" on public.messages
+drop policy if exists "members can delete own messages" on public.messages;
+create policy "members can delete own messages" on public.messages
 for delete to authenticated using (
   user_id = (select auth.uid())
   and exists (
