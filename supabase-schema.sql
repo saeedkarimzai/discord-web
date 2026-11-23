@@ -66,11 +66,11 @@ for select to authenticated using (true);
 
 drop policy if exists "users create own profile" on public.profiles;
 create policy "users create own profile" on public.profiles
-for insert to authenticated with check (id = auth.uid());
+for insert to authenticated with check (id = (select auth.uid()));
 
 drop policy if exists "users update own profile" on public.profiles;
 create policy "users update own profile" on public.profiles
-for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
 -- Servers
  drop policy if exists "members can read servers" on public.servers;
